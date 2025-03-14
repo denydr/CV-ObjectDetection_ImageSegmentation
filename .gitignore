@@ -1,0 +1,7 @@
+.venv/bin
+.venv
+.idea/
+datasets/
+davis-env/
+*.pyc
+__pycache__/
