@@ -1,19 +1,50 @@
 import os
+from pathlib import Path
 
-# Path to the DAVIS dataset (adjust this to your actual location)
-DATASET_DIR = os.path.join("datasets","DAVIS_dataset")
+# PROJECT ROOT (adjust if necessary)
+PROJECT_ROOT = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation").resolve()
 
-# Choose the resolution:
-IMAGE_RESOLUTION = "480p"
+# Data Directories
+DATASETS_DIR = PROJECT_ROOT / "datasets"
+DAVIS_RAW_FRAMES_DIR = DATASETS_DIR / "DAVIS_dataset" / "representative_dataset_PNGImages" / "480p"  # Raw image sequences
+# Raw RGB masks for the representative dataset (annotations in original format)
+RAW_MASKS_DIR = DATASETS_DIR / "DAVIS_dataset" / "representative_dataset_Annotations" / "480p"
 
-# Path to the train and validation text files
-TRAIN_LIST = os.path.join("datasets","DAVIS_dataset","ImageSets", "2017", "train.txt")
-VAL_LIST = os.path.join("datasets", "DAVIS_dataset", "ImageSets", "2017", "val.txt")
+# Output Directories
+OUTPUT_DIR = PROJECT_ROOT / "output"
+REP_BBOX_JSON = OUTPUT_DIR / "representative_dataset_boundingboxes_labels.json"
 
-# Inference-related parameters
-INFERENCE_BATCH_SIZE = 1  # or as needed for inference
+# Converted masks (for evaluation)
+# Multi-object sequences
+REP_MASKS_MULTI = OUTPUT_DIR / "representative_dataset_masks" / "multi_object"
+# Single-object sequences
+REP_MASKS_SINGLE = OUTPUT_DIR / "representative_dataset_masks" / "single_object"
 
-# Hyperparameters (if training or fine-tuning)
-#BATCH_SIZE = 4
-#NUM_EPOCHS = 20
-#LEARNING_RATE = 0.001
+# Canonical Mapping file path (for standardizing category labels)
+CANONICAL_MAPPING_PATH = PROJECT_ROOT / "canonical_label_mapping.json"
+
+# Checkpoints (for model weights)
+CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
+YOLO_CHECKPOINT = CHECKPOINT_DIR / "yolov8n-seg.pt"  # YOLOv8 segmentation model
+
+# Evaluation Parameters
+IOU_THRESHOLD = 0.5         # IoU threshold for matching predictions to ground truth
+CONFIDENCE_THRESHOLD = 0.5  # Threshold for detection confidence (if applicable)
+DEVICE = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") else "cpu"
+
+# Other evaluation configuration (you can add more as needed)
+METRICS = {
+    "iou_threshold": IOU_THRESHOLD,
+    "confidence_threshold": CONFIDENCE_THRESHOLD
+}
+
+# Print configuration summary
+print("Configuration loaded:")
+print(f"  DAVIS raw frames: {DAVIS_RAW_FRAMES_DIR}")
+print(f"  Raw representative masks: {RAW_MASKS_DIR}")
+print(f"  Representative BBox JSON: {REP_BBOX_JSON}")
+print(f"  Converted Multi-Object Masks: {REP_MASKS_MULTI}")
+print(f"  Converted Single-Object Masks: {REP_MASKS_SINGLE}")
+print(f"  Canonical mapping: {CANONICAL_MAPPING_PATH}")
+print(f"  YOLO checkpoint: {YOLO_CHECKPOINT}")
+print(f"  Device: {DEVICE}")

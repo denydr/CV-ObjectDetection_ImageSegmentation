@@ -1,0 +1,23 @@
+{
+  "ball": 0,
+  "bicycle": 1,
+  "bird": 2,
+  "car": 3,
+  "cat": 4,
+  "cow": 5,
+  "dog": 6,
+  "elephant": 7,
+  "goat": 8,
+  "horse": 9,
+  "motorcycle": 10,
+  "paper": 11,
+  "paraglide": 12,
+  "person": 13,
+  "pig": 14,
+  "puck": 15,
+  "skateboard": 16,
+  "snowboard": 17,
+  "stick": 18,
+  "stroller": 19,
+  "varanus": 20
+}
