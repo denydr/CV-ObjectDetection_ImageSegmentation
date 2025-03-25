@@ -9,7 +9,8 @@ from config import (
     RAW_MASKS_DIR,
     REP_BBOX_JSON,
     REP_MASKS_MULTI,
-    REP_MASKS_SINGLE
+    REP_MASKS_SINGLE,
+    YOLO_CHECKPOINT
 )
 def load_representative_bbox_annotations():
     """

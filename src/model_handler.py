@@ -35,7 +35,19 @@ class YOLOv8SegmentationModel(BaseModel):
         scores = prediction.boxes.conf.cpu().numpy()
 
         # Extract segmentation masks (if available)
-        masks = prediction.masks.data.cpu().numpy() if hasattr(prediction, "masks") else None
+        if hasattr(prediction, "masks") and prediction.masks is not None:
+            raw_masks = prediction.masks.data.cpu().numpy()
+            print("Raw mask stats: min =", raw_masks.min(), ", max =", raw_masks.max())
+            # Apply threshold to get binary masks
+            binary_masks = (raw_masks > 0.5).astype(np.uint8)
+            # Check unique values in the binary masks
+            unique_vals = np.unique(binary_masks)
+            print("Unique values in binary masks:", unique_vals)
+            masks = binary_masks
+            nonzero_count = np.count_nonzero(binary_masks)
+            print("Nonzero pixel count in binary mask:", nonzero_count)
+        else:
+            masks = None
 
         return boxes, labels, scores, masks
 
@@ -66,4 +78,6 @@ if __name__ == "__main__":
                 print("Boxes:", boxes)
                 print("Labels:", labels)
                 print("Scores:", scores)
-                # Optionally visualize or process the masks
+                print("Masks:", masks)
+
+                #Optionally visualize or process the masks
