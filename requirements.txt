@@ -1,3 +1,4 @@
+deep_sort_realtime
 numpy>=1.19.2
 opencv-python>=4.5.1.48
 ultralytics
