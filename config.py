@@ -24,8 +24,15 @@ REP_MASKS_SINGLE = OUTPUT_DIR / "representative_dataset_masks" / "single_object"
 CANONICAL_MAPPING_PATH = PROJECT_ROOT / "canonical_label_mapping.json"
 
 # Checkpoints (for model weights)
-CHECKPOINT_DIR = OUTPUT_DIR / "checkpoints"
-YOLO_CHECKPOINT = CHECKPOINT_DIR / "yolov8n-seg.pt"  # YOLOv8 segmentation model
+CHECKPOINT_DIR = PROJECT_ROOT / "checkpoints"
+
+# YOLOv8 segmentation model
+YOLO_CHECKPOINT = CHECKPOINT_DIR / "yolov8n-seg.pt"
+
+# Mask R-CNN paths
+MASKRCNN_DIR = CHECKPOINT_DIR / "mask_rcnn"
+MASKRCNN_MODEL_PATH = MASKRCNN_DIR / "maskrcnn_resnet50_fpn_coco.pth"
+MASKRCNN_BACKBONE_PATH = MASKRCNN_DIR / "resnet50.pth"
 
 # Evaluation Parameters
 IOU_THRESHOLD = 0.5         # IoU threshold for matching predictions to ground truth
