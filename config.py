@@ -34,6 +34,7 @@ MASKRCNN_DIR = CHECKPOINT_DIR / "mask_rcnn"
 MASKRCNN_MODEL_PATH = MASKRCNN_DIR / "maskrcnn_resnet50_fpn_coco.pth"
 MASKRCNN_BACKBONE_PATH = MASKRCNN_DIR / "resnet50.pth"
 
+
 # Evaluation Parameters
 IOU_THRESHOLD = 0.5         # IoU threshold for matching predictions to ground truth
 CONFIDENCE_THRESHOLD = 0.5  # Threshold for detection confidence (if applicable)

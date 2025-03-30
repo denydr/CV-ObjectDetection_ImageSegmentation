@@ -86,6 +86,12 @@ class MaskRCNNModel(BaseModel):
 
 
 # -------------------------
+#
+# -------------------------
+
+
+
+# -------------------------
 # Factory function
 # -------------------------
 def get_model(model_type="yolo"):
@@ -104,7 +110,3 @@ def get_model(model_type="yolo"):
 #     print("🔍 Loading Mask R-CNN model for testing...")
 #     model = get_model("maskrcnn")
 #     print("✅ Mask R-CNN model loaded and ready.")
-if __name__ == "__main__":
-    print("🔍 Testing Mask2Former auto-download and loading...")
-    model = get_model("mask2former")
-    print("✅ Mask2Former is ready for inference.")
