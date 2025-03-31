@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torchvision
 import torch.nn.functional as F
+from torchvision.transforms.functional import to_tensor
 from torchvision.models.detection import maskrcnn_resnet50_fpn
 from torchvision.models.segmentation import deeplabv3_resnet101
 from torchvision.models.segmentation import DeepLabV3_ResNet101_Weights
@@ -80,7 +81,7 @@ class MaskRCNNModel(BaseModel):
         self.model.to(self.device).eval()
 
     def predict(self, image):
-        image_tensor = F.to_tensor(image).unsqueeze(0).to(self.device)
+        image_tensor = to_tensor(image).unsqueeze(0).to(self.device)
         with torch.no_grad():
             outputs = self.model(image_tensor)[0]
 
@@ -109,6 +110,7 @@ class YOLOv8_DeepLabV3_PipelineModel(BaseModel):
             print(f"✅ YOLOv8m saved to {YOLO_DETECTION_PATH}")
         self.yolo = YOLO(str(YOLO_DETECTION_PATH))
         self.yolo.to(self.device)
+        self.names = self.yolo.model.names
 
         # -----------------------
         # Load DeepLabV3 for segmentation (masks)
@@ -130,7 +132,7 @@ class YOLOv8_DeepLabV3_PipelineModel(BaseModel):
         yolo_results = self.yolo(image)
         prediction = yolo_results[0]
         boxes = prediction.boxes.xyxy.cpu().numpy()
-        labels = prediction.boxes.cls.cpu().numpy()
+        labels = prediction.boxes.cls.cpu().numpy().astype(int)
         scores = prediction.boxes.conf.cpu().numpy()
 
         # ------------------ Instance Segmentation with DeepLabV3 ------------------
@@ -142,7 +144,7 @@ class YOLOv8_DeepLabV3_PipelineModel(BaseModel):
                 masks.append(np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8))
                 continue
 
-            crop_tensor = F.to_tensor(crop).unsqueeze(0).to(self.device)
+            crop_tensor = to_tensor(crop).unsqueeze(0).to(self.device)
             with torch.no_grad():
                 output = self.deeplab(crop_tensor)['out']
             pred_mask = output.squeeze(0).argmax(0).cpu().numpy()

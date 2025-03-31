@@ -13,8 +13,15 @@ from config import (
     REP_MASKS_MULTI,
     REP_MASKS_SINGLE,
     RAW_MASKS_DIR,
+    CONFIDENCE_THRESHOLD,
+    MAX_INSTANCES,
     CANONICAL_MAPPING_PATH,
     YOLO_CHECKPOINT,
+    MASKRCNN_MODEL_PATH,
+    MASKRCNN_BACKBONE_PATH,
+    YOLO_DETECTION_PATH,
+    DEEPLAB_PATH,
+    DEEPLAB_DIR,
 )
 
 # Import the semantic standardization functions from your label_standardization.py module.
@@ -22,6 +29,10 @@ from label_standardization import (
     load_canonical_mapping,
     compute_canonical_embeddings,
     standardize_labels_semantic
+)
+
+from label_standardization_coco import (
+    standardize_coco_labels
 )
 
 from model_handler import get_model
@@ -235,93 +246,239 @@ def evaluate_sequence(sequence_name, object_type):
 #-------------MODEL INFERENCE---------------------YOLO
 # Converts numeric prediction indices into their corresponding string labels
 # using the model's names mapping.
+# def convert_indices_to_labels(pred_indices, model):
+#     if hasattr(model, "names"):
+#         names = model.names
+#     elif hasattr(model, "model") and hasattr(model.model, "names"):
+#         names = model.model.names
+#     else:
+#         raise AttributeError("The model does not have a 'names' attribute for label lookup.")
+#     return [names.get(int(idx), "unknown") for idx in pred_indices]
+#
+# def run_model_inference_on_frame(model, frame):
+#     boxes, pred_indices, scores, masks = model.predict(frame)
+#     return boxes, pred_indices, scores, masks
+#
+# def evaluate_sequence(sequence_name, object_type, model, canonical_mapping, canonical_embeddings):
+#     print(f"\nEvaluating sequence: {sequence_name} ({object_type})")
+#
+#     # Load raw frames.
+#     raw_frames = data_loader.load_raw_frames(sequence_name)
+#     print(f"  Loaded {len(raw_frames)} raw frames from {DAVIS_RAW_FRAMES_DIR / sequence_name}")
+#
+#     # Load ground‑truth annotations.
+#     all_annotations = data_loader.load_representative_bbox_annotations()
+#     gt_annotations = all_annotations.get(object_type, {}).get(sequence_name, {})
+#     print(f"  Loaded bounding box annotations for {len(gt_annotations)} frames from {REP_BBOX_JSON}")
+#
+#     # Load evaluation‑ready masks.
+#     eval_masks = data_loader.load_converted_masks(sequence_name, is_multi_object=(object_type=="multi_object"))
+#     mask_dir = REP_MASKS_MULTI if object_type == "multi_object" else REP_MASKS_SINGLE
+#     print(f"  Loaded {len(eval_masks)} evaluation‑ready masks from {mask_dir}")
+#
+#     # Optionally, load raw RGB masks for overlay comparisons.
+#     raw_masks = data_loader.load_raw_masks(sequence_name)
+#     print(f"  Loaded {len(raw_masks)} raw masks from {RAW_MASKS_DIR}")
+#
+#     # Create a single window for display.
+#     window_name = f"{sequence_name} Evaluation"
+#     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+#
+#     for frame_filename, frame_img in raw_frames:
+#         # Run model inference.
+#         boxes, pred_indices, scores, pred_masks = run_model_inference_on_frame(model, frame_img)
+#
+#         # Convert indices to label strings.
+#         pred_label_strings = convert_indices_to_labels(pred_indices, model)
+#         # Standardize labels semantically using the cached canonical embeddings.
+#         std_labels = standardize_labels_semantic(pred_label_strings, canonical_mapping, canonical_embeddings, threshold=0.8)
+#
+#         print(f"Frame {frame_filename}:")
+#         print(f"  Predicted boxes: {boxes}")
+#         print(f"  Predicted labels: {pred_label_strings}")
+#         print(f"  Standardized labels: {std_labels}")
+#         print(f"  Scores: {scores}")
+#
+#         # Start with a fresh copy of the raw frame.
+#         annotated_frame = frame_img.copy()
+#
+#         # Draw predicted boxes and standardized labels.
+#         for box, label in zip(boxes, std_labels):
+#             x1, y1, x2, y2 = map(int, box)
+#             cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+#             cv2.putText(annotated_frame, str(label), (x1, y1 - 10),
+#                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+#
+#         # Create a composite mask image.
+#         composite_mask = np.zeros_like(annotated_frame, dtype=np.uint8)
+#         if pred_masks is not None and pred_masks.size > 0:
+#             # Define a fixed palette of colors.
+#             colors = [(0, 255, 0), (0, 0, 255), (255, 0, 0),
+#                       (0, 255, 255), (255, 0, 255), (255, 255, 0)]
+#             for i in range(pred_masks.shape[0]):
+#                 binary_mask = (pred_masks[i] > 0.5).astype(np.uint8) * 255
+#                 # Resize mask if needed.
+#                 if binary_mask.shape != annotated_frame.shape[:2]:
+#                     binary_mask = cv2.resize(binary_mask, (annotated_frame.shape[1], annotated_frame.shape[0]))
+#                 mask_color = np.zeros_like(annotated_frame, dtype=np.uint8)
+#                 color = colors[i % len(colors)]
+#                 mask_color[binary_mask == 255] = color
+#                 composite_mask = cv2.addWeighted(composite_mask, 1.0, mask_color, 0.5, 0)
+#             display_frame = cv2.addWeighted(annotated_frame, 0.7, composite_mask, 0.3, 0)
+#         elif frame_filename in raw_masks:
+#             mask = raw_masks[frame_filename]
+#             if mask.shape[:2] != annotated_frame.shape[:2]:
+#                 mask = cv2.resize(mask, (annotated_frame.shape[1], annotated_frame.shape[0]))
+#             if len(mask.shape) == 2:
+#                 mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+#             else:
+#                 mask_bgr = mask
+#             display_frame = cv2.addWeighted(annotated_frame, 0.7, mask_bgr, 0.3, 0)
+#         else:
+#             display_frame = annotated_frame
+#
+#         cv2.imshow(window_name, display_frame)
+#         if cv2.waitKey(1) & 0xFF == ord('q'):
+#             break
+#
+#     cv2.destroyAllWindows()
+#
+# def main():
+#     # Load canonical mapping from config.
+#     try:
+#         canonical_mapping = load_canonical_mapping()
+#     except Exception as e:
+#         print(f"Error loading canonical mapping: {e}")
+#         return
+#
+#     print("Canonical Mapping:")
+#     for key, value in canonical_mapping.items():
+#         print(f"  {key}: {value}")
+#
+#     # Precompute canonical embeddings.
+#     canonical_embeddings = compute_canonical_embeddings(canonical_mapping)
+#
+#     # Initialize the model (YOLOv8 segmentation).
+#     model = get_model("yolo")  # Using the default checkpoint and device from config.
+#
+#     # Load complete ground‑truth annotations JSON.
+#     all_annotations = data_loader.load_representative_bbox_annotations()
+#
+#     # Process multi-object sequences.
+#     multi_sequences = list(all_annotations.get("multi_object", {}).keys())
+#     print(f"\nFound {len(multi_sequences)} sequences for object type 'multi_object'")
+#     for sequence_name in multi_sequences:
+#         evaluate_sequence(sequence_name, "multi_object", model, canonical_mapping, canonical_embeddings)
+#         print(f"Finished evaluating sequence: {sequence_name}\n")
+#         if cv2.waitKey(1) & 0xFF == ord('q'):
+#             break
+#
+#     # Process single-object sequences.
+#     single_sequences = list(all_annotations.get("single_object", {}).keys())
+#     print(f"\nFound {len(single_sequences)} sequences for object type 'single_object'")
+#     for sequence_name in single_sequences:
+#         evaluate_sequence(sequence_name, "single_object", model, canonical_mapping, canonical_embeddings)
+#         print(f"Finished evaluating sequence: {sequence_name}\n")
+#         if cv2.waitKey(1) & 0xFF == ord('q'):
+#             break
+#
+# if __name__ == "__main__":
+#     main()
+
+
+#-------------MODEL INFERENCE---------------------YOLO, MASKRCNN, MASKDETR
 def convert_indices_to_labels(pred_indices, model):
     if hasattr(model, "names"):
         names = model.names
     elif hasattr(model, "model") and hasattr(model.model, "names"):
         names = model.model.names
     else:
-        raise AttributeError("The model does not have a 'names' attribute for label lookup.")
+        return [str(i) for i in pred_indices]  # fallback
     return [names.get(int(idx), "unknown") for idx in pred_indices]
 
+
 def run_model_inference_on_frame(model, frame):
-    boxes, pred_indices, scores, masks = model.predict(frame)
-    return boxes, pred_indices, scores, masks
+    return model.predict(frame)
+
 
 def evaluate_sequence(sequence_name, object_type, model, canonical_mapping, canonical_embeddings):
-    print(f"\nEvaluating sequence: {sequence_name} ({object_type})")
+    print(f"\n📽️ Evaluating sequence: {sequence_name} ({object_type})")
 
-    # Load raw frames.
     raw_frames = data_loader.load_raw_frames(sequence_name)
-    print(f"  Loaded {len(raw_frames)} raw frames from {DAVIS_RAW_FRAMES_DIR / sequence_name}")
+    print(f"  📸 Loaded {len(raw_frames)} raw frames")
 
-    # Load ground‑truth annotations.
     all_annotations = data_loader.load_representative_bbox_annotations()
     gt_annotations = all_annotations.get(object_type, {}).get(sequence_name, {})
-    print(f"  Loaded bounding box annotations for {len(gt_annotations)} frames from {REP_BBOX_JSON}")
-
-    # Load evaluation‑ready masks.
-    eval_masks = data_loader.load_converted_masks(sequence_name, is_multi_object=(object_type=="multi_object"))
-    mask_dir = REP_MASKS_MULTI if object_type == "multi_object" else REP_MASKS_SINGLE
-    print(f"  Loaded {len(eval_masks)} evaluation‑ready masks from {mask_dir}")
-
-    # Optionally, load raw RGB masks for overlay comparisons.
+    eval_masks = data_loader.load_converted_masks(sequence_name, is_multi_object=(object_type == "multi_object"))
     raw_masks = data_loader.load_raw_masks(sequence_name)
-    print(f"  Loaded {len(raw_masks)} raw masks from {RAW_MASKS_DIR}")
 
-    # Create a single window for display.
+    mask_dir = REP_MASKS_MULTI if object_type == "multi_object" else REP_MASKS_SINGLE
+    print(f"  📦 GT annotations: {len(gt_annotations)}  |  Eval masks: {len(eval_masks)}  |  Raw masks: {len(raw_masks)}")
+
     window_name = f"{sequence_name} Evaluation"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
     for frame_filename, frame_img in raw_frames:
-        # Run model inference.
         boxes, pred_indices, scores, pred_masks = run_model_inference_on_frame(model, frame_img)
 
-        # Convert indices to label strings.
-        pred_label_strings = convert_indices_to_labels(pred_indices, model)
-        # Standardize labels semantically using the cached canonical embeddings.
-        std_labels = standardize_labels_semantic(pred_label_strings, canonical_mapping, canonical_embeddings, threshold=0.8)
+        # Apply confidence threshold
+        keep_indices = scores >= CONFIDENCE_THRESHOLD
+        boxes = boxes[keep_indices]
+        pred_indices = pred_indices[keep_indices]
+        scores = scores[keep_indices]
+        if pred_masks is not None and pred_masks.shape[0] == len(keep_indices):
+            pred_masks = pred_masks[keep_indices]
 
-        print(f"Frame {frame_filename}:")
-        print(f"  Predicted boxes: {boxes}")
-        print(f"  Predicted labels: {pred_label_strings}")
-        print(f"  Standardized labels: {std_labels}")
-        print(f"  Scores: {scores}")
+        # Sort by confidence and keep top N
+        if len(scores) > MAX_INSTANCES:
+            top_indices = np.argsort(scores)[-MAX_INSTANCES:][::-1]  # top scores first
+            boxes = boxes[top_indices]
+            pred_indices = pred_indices[top_indices]
+            scores = scores[top_indices]
+            if pred_masks is not None and pred_masks.shape[0] >= len(top_indices):
+                pred_masks = pred_masks[top_indices]
 
-        # Start with a fresh copy of the raw frame.
+        # 🔁 Handle label logic based on model type
+        model_type = type(model).__name__.lower()
+        if "maskrcnn" in model_type:
+            std_labels = standardize_coco_labels(pred_indices, canonical_mapping, canonical_embeddings, threshold=0.75)
+            pred_label_strings = [str(label) for label in pred_indices]
+        else:
+            pred_label_strings = convert_indices_to_labels(pred_indices, model)
+            std_labels = standardize_labels_semantic(pred_label_strings, canonical_mapping, canonical_embeddings, threshold=0.8)
+
+        print(f"🖼️ Frame {frame_filename}:")
+        print(f"  🟥 Boxes: {boxes}")
+        print(f"  🏷️ Labels: {pred_label_strings}")
+        print(f"  ✅ Standardized: {std_labels}")
+        print(f"  📊 Scores: {scores}")
+
         annotated_frame = frame_img.copy()
 
-        # Draw predicted boxes and standardized labels.
         for box, label in zip(boxes, std_labels):
             x1, y1, x2, y2 = map(int, box)
             cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(annotated_frame, str(label), (x1, y1 - 10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-        # Create a composite mask image.
+        # Create composite mask image
         composite_mask = np.zeros_like(annotated_frame, dtype=np.uint8)
         if pred_masks is not None and pred_masks.size > 0:
-            # Define a fixed palette of colors.
             colors = [(0, 255, 0), (0, 0, 255), (255, 0, 0),
                       (0, 255, 255), (255, 0, 255), (255, 255, 0)]
             for i in range(pred_masks.shape[0]):
                 binary_mask = (pred_masks[i] > 0.5).astype(np.uint8) * 255
-                # Resize mask if needed.
                 if binary_mask.shape != annotated_frame.shape[:2]:
                     binary_mask = cv2.resize(binary_mask, (annotated_frame.shape[1], annotated_frame.shape[0]))
                 mask_color = np.zeros_like(annotated_frame, dtype=np.uint8)
-                color = colors[i % len(colors)]
-                mask_color[binary_mask == 255] = color
+                mask_color[binary_mask == 255] = colors[i % len(colors)]
                 composite_mask = cv2.addWeighted(composite_mask, 1.0, mask_color, 0.5, 0)
             display_frame = cv2.addWeighted(annotated_frame, 0.7, composite_mask, 0.3, 0)
         elif frame_filename in raw_masks:
             mask = raw_masks[frame_filename]
             if mask.shape[:2] != annotated_frame.shape[:2]:
                 mask = cv2.resize(mask, (annotated_frame.shape[1], annotated_frame.shape[0]))
-            if len(mask.shape) == 2:
-                mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-            else:
-                mask_bgr = mask
+            mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) if len(mask.shape) == 2 else mask
             display_frame = cv2.addWeighted(annotated_frame, 0.7, mask_bgr, 0.3, 0)
         else:
             display_frame = annotated_frame
@@ -332,135 +489,32 @@ def evaluate_sequence(sequence_name, object_type, model, canonical_mapping, cano
 
     cv2.destroyAllWindows()
 
+
 def main():
-    # Load canonical mapping from config.
     try:
         canonical_mapping = load_canonical_mapping()
     except Exception as e:
-        print(f"Error loading canonical mapping: {e}")
+        print(f"❌ Error loading canonical mapping: {e}")
         return
 
-    print("Canonical Mapping:")
-    for key, value in canonical_mapping.items():
-        print(f"  {key}: {value}")
-
-    # Precompute canonical embeddings.
     canonical_embeddings = compute_canonical_embeddings(canonical_mapping)
 
-    # Initialize the model (YOLOv8 segmentation).
-    model = get_model("yolo")  # Using the default checkpoint and device from config.
+    # 🔀 Choose model here
+    # model = get_model("yolo")
+    # model = get_model("maskrcnn")
+    model = get_model("yolo_deeplab")# or "yolo", or "yolo_deeplab"
 
-    # Load complete ground‑truth annotations JSON.
     all_annotations = data_loader.load_representative_bbox_annotations()
 
-    # Process multi-object sequences.
-    multi_sequences = list(all_annotations.get("multi_object", {}).keys())
-    print(f"\nFound {len(multi_sequences)} sequences for object type 'multi_object'")
-    for sequence_name in multi_sequences:
-        evaluate_sequence(sequence_name, "multi_object", model, canonical_mapping, canonical_embeddings)
-        print(f"Finished evaluating sequence: {sequence_name}\n")
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+    for object_type in ["multi_object", "single_object"]:
+        sequences = list(all_annotations.get(object_type, {}).keys())
+        print(f"\n📂 Found {len(sequences)} sequences for {object_type}")
+        for sequence_name in sequences:
+            evaluate_sequence(sequence_name, object_type, model, canonical_mapping, canonical_embeddings)
+            print(f"✅ Finished sequence: {sequence_name}")
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
 
-    # Process single-object sequences.
-    single_sequences = list(all_annotations.get("single_object", {}).keys())
-    print(f"\nFound {len(single_sequences)} sequences for object type 'single_object'")
-    for sequence_name in single_sequences:
-        evaluate_sequence(sequence_name, "single_object", model, canonical_mapping, canonical_embeddings)
-        print(f"Finished evaluating sequence: {sequence_name}\n")
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
 
 if __name__ == "__main__":
     main()
-
-
-#-------------MODEL INFERENCE---------------------YOLO, MASKRCNN, MASKDETR
-# def run_model_inference_on_frame(model, frame):
-#     return model.predict(frame)
-#
-# def evaluate_sequence(sequence_name, object_type, model, canonical_mapping, canonical_embeddings):
-#     print(f"\nEvaluating sequence: {sequence_name} ({object_type})")
-#
-#     raw_frames = data_loader.load_raw_frames(sequence_name)
-#     print(f"  Loaded {len(raw_frames)} raw frames")
-#
-#     all_annotations = data_loader.load_representative_bbox_annotations()
-#     gt_annotations = all_annotations.get(object_type, {}).get(sequence_name, {})
-#
-#     eval_masks = data_loader.load_converted_masks(sequence_name, is_multi_object=(object_type == "multi_object"))
-#     raw_masks = data_loader.load_raw_masks(sequence_name)
-#
-#     mask_dir = REP_MASKS_MULTI if object_type == "multi_object" else REP_MASKS_SINGLE
-#     print(f"  Loaded {len(eval_masks)} evaluation masks from {mask_dir}")
-#     print(f"  Loaded {len(raw_masks)} raw RGB masks")
-#
-#     cv2.namedWindow(sequence_name, cv2.WINDOW_NORMAL)
-#
-#     for frame_filename, frame_img in raw_frames:
-#         boxes, pred_indices, scores, pred_masks = run_model_inference_on_frame(model, frame_img)
-#
-#         # Standardize labels across all models (numeric or string)
-#         std_labels = standardize_labels_semantic(pred_indices, canonical_mapping, canonical_embeddings, threshold=0.75)
-#
-#         print(f"\nFrame {frame_filename}")
-#         print(f"  Boxes: {boxes}")
-#         print(f"  Raw labels: {pred_indices}")
-#         print(f"  Standardized: {std_labels}")
-#         print(f"  Scores: {scores}")
-#
-#         annotated_frame = frame_img.copy()
-#         for box, label in zip(boxes, std_labels):
-#             x1, y1, x2, y2 = map(int, box)
-#             cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-#             cv2.putText(annotated_frame, str(label), (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-#
-#         # Overlay segmentation masks
-#         composite_mask = np.zeros_like(annotated_frame, dtype=np.uint8)
-#         if pred_masks is not None and pred_masks.size > 0:
-#             colors = [(0, 255, 0), (0, 0, 255), (255, 0, 0), (0, 255, 255), (255, 0, 255), (255, 255, 0)]
-#             for i in range(pred_masks.shape[0]):
-#                 binary_mask = (pred_masks[i] > 0.5).astype(np.uint8) * 255
-#                 if binary_mask.shape != annotated_frame.shape[:2]:
-#                     binary_mask = cv2.resize(binary_mask, (annotated_frame.shape[1], annotated_frame.shape[0]))
-#                 mask_color = np.zeros_like(annotated_frame, dtype=np.uint8)
-#                 mask_color[binary_mask == 255] = colors[i % len(colors)]
-#                 composite_mask = cv2.addWeighted(composite_mask, 1.0, mask_color, 0.5, 0)
-#             display_frame = cv2.addWeighted(annotated_frame, 0.7, composite_mask, 0.3, 0)
-#         elif frame_filename in raw_masks:
-#             mask = raw_masks[frame_filename]
-#             if mask.shape[:2] != annotated_frame.shape[:2]:
-#                 mask = cv2.resize(mask, (annotated_frame.shape[1], annotated_frame.shape[0]))
-#             display_frame = cv2.addWeighted(annotated_frame, 0.7, mask, 0.3, 0)
-#         else:
-#             display_frame = annotated_frame
-#
-#         cv2.imshow(sequence_name, display_frame)
-#         if cv2.waitKey(1) & 0xFF == ord('q'):
-#             break
-#
-#     cv2.destroyAllWindows()
-#
-# def main():
-#     canonical_mapping = load_canonical_mapping()
-#     canonical_embeddings = compute_canonical_embeddings(canonical_mapping)
-#
-#     # Evaluate across all model types
-#     model_types = ["yolo"]
-#     #model_types = ["yolo", "maskrcnn", "mask2former"]
-#     for model_type in model_types:
-#         print(f"\n======= Evaluating Model: {model_type.upper()} =======")
-#         model = get_model(model_type)
-#
-#         all_annotations = data_loader.load_representative_bbox_annotations()
-#         for object_type in ["multi_object", "single_object"]:
-#             sequences = list(all_annotations.get(object_type, {}).keys())
-#             print(f"\nFound {len(sequences)} sequences for object type '{object_type}'")
-#             for sequence_name in sequences:
-#                 evaluate_sequence(sequence_name, object_type, model, canonical_mapping, canonical_embeddings)
-#                 print(f"✅ Finished: {sequence_name}")
-#                 if cv2.waitKey(1) & 0xFF == ord('q'):
-#                     return
-#
-# if __name__ == "__main__":
-#     main()

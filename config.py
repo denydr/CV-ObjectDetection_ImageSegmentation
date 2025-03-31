@@ -44,6 +44,7 @@ DEEPLAB_PATH = DEEPLAB_DIR / "deeplabv3_resnet101_coco.pth"
 # Evaluation Parameters
 IOU_THRESHOLD = 0.5         # IoU threshold for matching predictions to ground truth
 CONFIDENCE_THRESHOLD = 0.5  # Threshold for detection confidence (if applicable)
+MAX_INSTANCES = 15
 DEVICE = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") else "cpu"
 
 # Other evaluation configuration (you can add more as needed)
@@ -63,4 +64,6 @@ print(f"  Canonical mapping: {CANONICAL_MAPPING_PATH}")
 print(f"  YOLO checkpoint: {YOLO_CHECKPOINT}")
 print(f"  YOLOv8m detection path: {YOLO_DETECTION_PATH}")
 print(f"  DeepLabV3 weights path: {DEEPLAB_PATH}")
+print(f"  MaskRCNN model path: {MASKRCNN_MODEL_PATH} ")
+print(f"  MaskRCNN backbone path:{MASKRCNN_BACKBONE_PATH}")
 print(f"  Device: {DEVICE}")
