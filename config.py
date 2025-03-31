@@ -44,7 +44,7 @@ DEEPLAB_PATH = DEEPLAB_DIR / "deeplabv3_resnet101_coco.pth"
 # Evaluation Parameters
 IOU_THRESHOLD = 0.5         # IoU threshold for matching predictions to ground truth
 CONFIDENCE_THRESHOLD = 0.5  # Threshold for detection confidence (if applicable)
-MAX_INSTANCES = 15
+MAX_INSTANCES = 5
 DEVICE = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") else "cpu"
 
 # Other evaluation configuration (you can add more as needed)

@@ -386,7 +386,7 @@ def evaluate_sequence(sequence_name, object_type):
 #     main()
 
 
-#-------------MODEL INFERENCE---------------------YOLO, MASKRCNN, MASKDETR
+#-------------MODEL INFERENCE---------------------YOLO, MASKRCNN, YOLO-DeepLabV3
 def convert_indices_to_labels(pred_indices, model):
     if hasattr(model, "names"):
         names = model.names
@@ -396,10 +396,8 @@ def convert_indices_to_labels(pred_indices, model):
         return [str(i) for i in pred_indices]  # fallback
     return [names.get(int(idx), "unknown") for idx in pred_indices]
 
-
 def run_model_inference_on_frame(model, frame):
     return model.predict(frame)
-
 
 def evaluate_sequence(sequence_name, object_type, model, canonical_mapping, canonical_embeddings):
     print(f"\n📽️ Evaluating sequence: {sequence_name} ({object_type})")
@@ -489,7 +487,6 @@ def evaluate_sequence(sequence_name, object_type, model, canonical_mapping, cano
 
     cv2.destroyAllWindows()
 
-
 def main():
     try:
         canonical_mapping = load_canonical_mapping()
@@ -500,9 +497,9 @@ def main():
     canonical_embeddings = compute_canonical_embeddings(canonical_mapping)
 
     # 🔀 Choose model here
-    # model = get_model("yolo")
-    # model = get_model("maskrcnn")
-    model = get_model("yolo_deeplab")# or "yolo", or "yolo_deeplab"
+    model = get_model("yolo")
+    model = get_model("maskrcnn")
+    model = get_model("yolo_deeplab")
 
     all_annotations = data_loader.load_representative_bbox_annotations()
 
@@ -514,7 +511,6 @@ def main():
             print(f"✅ Finished sequence: {sequence_name}")
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-
 
 if __name__ == "__main__":
     main()
