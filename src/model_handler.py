@@ -5,6 +5,9 @@ import torch
 import torchvision
 import torch.nn.functional as F
 from torchvision.models.detection import maskrcnn_resnet50_fpn
+from torchvision.models.segmentation import deeplabv3_resnet101
+from torchvision.models.segmentation import DeepLabV3_ResNet101_Weights
+import urllib.request
 from pathlib import Path
 from ultralytics import YOLO
 
@@ -12,6 +15,9 @@ from config import (
     YOLO_CHECKPOINT,
     MASKRCNN_MODEL_PATH,
     MASKRCNN_BACKBONE_PATH,
+    YOLO_DETECTION_PATH,
+    DEEPLAB_PATH,
+    DEEPLAB_DIR,
     DEVICE
 )
 
@@ -86,9 +92,69 @@ class MaskRCNNModel(BaseModel):
 
 
 # -------------------------
-#
+# Unified YOLOv8m + DeepLabV3 Pipeline
 # -------------------------
+class YOLOv8_DeepLabV3_PipelineModel(BaseModel):
+    def __init__(self, device=None):
+        self.device = torch.device(device if device else DEVICE)
 
+        # -----------------------
+        # Load YOLOv8m for detection (boxes + labels)
+        # -----------------------
+        YOLO_DETECTION_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if not YOLO_DETECTION_PATH.exists():
+            print("📥 Downloading YOLOv8m detection model...")
+            yolo_url = "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8m.pt"
+            urllib.request.urlretrieve(yolo_url, YOLO_DETECTION_PATH)
+            print(f"✅ YOLOv8m saved to {YOLO_DETECTION_PATH}")
+        self.yolo = YOLO(str(YOLO_DETECTION_PATH))
+        self.yolo.to(self.device)
+
+        # -----------------------
+        # Load DeepLabV3 for segmentation (masks)
+        # -----------------------
+        DEEPLAB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        if not DEEPLAB_PATH.exists():
+            print("📥 Downloading DeepLabV3 weights...")
+            deeplab_url = "https://download.pytorch.org/models/deeplabv3_resnet101_coco-586e9e4e.pth"
+            urllib.request.urlretrieve(deeplab_url, DEEPLAB_PATH)
+            print(f"✅ DeepLabV3 weights saved to {DEEPLAB_PATH}")
+
+        self.deeplab = deeplabv3_resnet101(weights=DeepLabV3_ResNet101_Weights.COCO_WITH_VOC_LABELS_V1)
+        state_dict = torch.load(DEEPLAB_PATH, map_location=self.device)
+        self.deeplab.load_state_dict(state_dict)
+        self.deeplab.to(self.device).eval()
+
+    def predict(self, image):
+        # ------------------ Detection with YOLO ------------------
+        yolo_results = self.yolo(image)
+        prediction = yolo_results[0]
+        boxes = prediction.boxes.xyxy.cpu().numpy()
+        labels = prediction.boxes.cls.cpu().numpy()
+        scores = prediction.boxes.conf.cpu().numpy()
+
+        # ------------------ Instance Segmentation with DeepLabV3 ------------------
+        masks = []
+        for box in boxes:
+            x1, y1, x2, y2 = map(int, box)
+            crop = image[y1:y2, x1:x2]
+            if crop.size == 0:
+                masks.append(np.zeros((image.shape[0], image.shape[1]), dtype=np.uint8))
+                continue
+
+            crop_tensor = F.to_tensor(crop).unsqueeze(0).to(self.device)
+            with torch.no_grad():
+                output = self.deeplab(crop_tensor)['out']
+            pred_mask = output.squeeze(0).argmax(0).cpu().numpy()
+
+            # Resize and place mask back in original image size
+            full_mask = np.zeros(image.shape[:2], dtype=np.uint8)
+            resized_mask = cv2.resize(pred_mask.astype(np.uint8), (x2 - x1, y2 - y1), interpolation=cv2.INTER_NEAREST)
+            full_mask[y1:y2, x1:x2] = resized_mask
+            masks.append(full_mask)
+
+        masks = np.stack(masks) if masks else None
+        return boxes, labels, scores, masks
 
 
 # -------------------------
@@ -100,13 +166,15 @@ def get_model(model_type="yolo"):
         return YOLOv8SegmentationModel()
     elif model_type == "maskrcnn":
         return MaskRCNNModel()
+    elif model_type == "yolo_deeplab":
+        return YOLOv8_DeepLabV3_PipelineModel()
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 
 # -------------------------
 # Run test for model loading
 # -------------------------
-# if __name__ == "__main__":
-#     print("🔍 Loading Mask R-CNN model for testing...")
-#     model = get_model("maskrcnn")
-#     print("✅ Mask R-CNN model loaded and ready.")
+if __name__ == "__main__":
+    print("🔍 Loading YOLO-DeepLab model for testing...")
+    model = get_model("yolo_deeplab")
+    print("✅ YOLO_DEEPLAB model loaded and ready.")

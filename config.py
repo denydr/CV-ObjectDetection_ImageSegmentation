@@ -34,6 +34,12 @@ MASKRCNN_DIR = CHECKPOINT_DIR / "mask_rcnn"
 MASKRCNN_MODEL_PATH = MASKRCNN_DIR / "maskrcnn_resnet50_fpn_coco.pth"
 MASKRCNN_BACKBONE_PATH = MASKRCNN_DIR / "resnet50.pth"
 
+# YOLOv8m detection model
+YOLO_DETECTION_PATH = CHECKPOINT_DIR / "yolov8m.pt"
+
+# DeepLabV3 segmentation model
+DEEPLAB_DIR = CHECKPOINT_DIR / "deeplabv3"
+DEEPLAB_PATH = DEEPLAB_DIR / "deeplabv3_resnet101_coco.pth"
 
 # Evaluation Parameters
 IOU_THRESHOLD = 0.5         # IoU threshold for matching predictions to ground truth
@@ -55,4 +61,6 @@ print(f"  Converted Multi-Object Masks: {REP_MASKS_MULTI}")
 print(f"  Converted Single-Object Masks: {REP_MASKS_SINGLE}")
 print(f"  Canonical mapping: {CANONICAL_MAPPING_PATH}")
 print(f"  YOLO checkpoint: {YOLO_CHECKPOINT}")
+print(f"  YOLOv8m detection path: {YOLO_DETECTION_PATH}")
+print(f"  DeepLabV3 weights path: {DEEPLAB_PATH}")
 print(f"  Device: {DEVICE}")
