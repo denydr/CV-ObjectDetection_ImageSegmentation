@@ -53,6 +53,31 @@ METRICS = {
     "confidence_threshold": CONFIDENCE_THRESHOLD
 }
 
+# ---------------------------------------------------------------------
+# Additional Paths for GT annotations and predictions
+# GT Annotations:
+GT_MASKS_DIR = PROJECT_ROOT / "metrics_artifacts" / "gt_annotations" / "gt_masks"
+GT_JSONS_DIR = PROJECT_ROOT / "metrics_artifacts" / "gt_annotations" / "gt_JSONs"
+
+# Predicted Masks & JSONs (Preprocessed):
+PREDICTED_BASE_DIR = PROJECT_ROOT / "metrics_artifacts" / "predictions" / "predicted_masks_preprocessed"
+
+# For YOLO:
+YOLO_PREDICTED_MASKS_DIR = PREDICTED_BASE_DIR / "yolo" / "yolo_predicted_masks"
+YOLO_PREDICTED_JSONS_DIR = PREDICTED_BASE_DIR / "yolo" / "yolo_predicted_JSONs"
+
+# For Mask R-CNN:
+MASKRCNN_PREDICTED_MASKS_DIR = PREDICTED_BASE_DIR / "maskrcnn" / "maskrcnn_predicted_masks"
+MASKRCNN_PREDICTED_JSONS_DIR = PREDICTED_BASE_DIR / "maskrcnn" / "maskrcnn_predicted_JSONs"
+
+# For YOLO+DeepLab:
+YOLO_DEEPLAB_PREDICTED_MASKS_DIR = PREDICTED_BASE_DIR / "yolo_deeplab" / "yolo_deeplab_predicted_masks"
+YOLO_DEEPLAB_PREDICTED_JSONS_DIR = PREDICTED_BASE_DIR / "yolo_deeplab" / "yolo_deeplab_predicted_JSONs"
+
+# Print configuration summary
+print("Configuration loaded:")
+print(f"  DAVIS raw frames: {DAVIS_RAW_FRAMES_DIR}")
+
 # Print configuration summary
 print("Configuration loaded:")
 print(f"  DAVIS raw frames: {DAVIS_RAW_FRAMES_DIR}")
@@ -67,3 +92,13 @@ print(f"  DeepLabV3 weights path: {DEEPLAB_PATH}")
 print(f"  MaskRCNN model path: {MASKRCNN_MODEL_PATH} ")
 print(f"  MaskRCNN backbone path:{MASKRCNN_BACKBONE_PATH}")
 print(f"  Device: {DEVICE}")
+
+print("Additional Paths:")
+print(f"  GT Masks: {GT_MASKS_DIR}")
+print(f"  GT JSONs: {GT_JSONS_DIR}")
+print(f"  YOLO Predicted Masks: {YOLO_PREDICTED_MASKS_DIR}")
+print(f"  YOLO Predicted JSONs: {YOLO_PREDICTED_JSONS_DIR}")
+print(f"  MASKRCNN Predicted Masks: {MASKRCNN_PREDICTED_MASKS_DIR}")
+print(f"  MASKRCNN Predicted JSONs: {MASKRCNN_PREDICTED_JSONS_DIR}")
+print(f"  YOLO-Deeplab Predicted Masks: {YOLO_DEEPLAB_PREDICTED_MASKS_DIR}")
+print(f"  YOLO-Deeplab Predicted JSONs: {YOLO_DEEPLAB_PREDICTED_JSONS_DIR}")
