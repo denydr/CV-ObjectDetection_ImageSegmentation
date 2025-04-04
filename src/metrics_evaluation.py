@@ -55,7 +55,8 @@ def compute_iou(boxA, boxB):
 def compute_detection_metrics(gt_boxes, gt_labels, pred_boxes, pred_labels, iou_threshold=0.5):
     """
     Computes detection metrics (precision, recall, F1, label accuracy) based on IoU matching.
-    This is a simplified one-to-one matching approach.
+    Additionally, it computes the average IoU of all matched boxes.
+
     Note: This function uses all predictions (i.e., raw metrics), ignoring confidence scores.
     """
     TP = 0
@@ -63,6 +64,8 @@ def compute_detection_metrics(gt_boxes, gt_labels, pred_boxes, pred_labels, iou_
     FN = 0
     label_correct = 0
     matched_gt = set()
+    matched_ious = []  # To store IoU for each matched pair.
+
     for p_box, p_label in zip(pred_boxes, pred_labels):
         best_iou = 0
         best_idx = -1
@@ -76,6 +79,7 @@ def compute_detection_metrics(gt_boxes, gt_labels, pred_boxes, pred_labels, iou_
         if best_iou >= iou_threshold:
             TP += 1
             matched_gt.add(best_idx)
+            matched_ious.append(best_iou)
             if p_label == gt_labels[best_idx]:
                 label_correct += 1
         else:
@@ -85,15 +89,61 @@ def compute_detection_metrics(gt_boxes, gt_labels, pred_boxes, pred_labels, iou_
     recall = TP / (TP + FN + 1e-6)
     f1 = 2 * precision * recall / (precision + recall + 1e-6)
     label_accuracy = label_correct / (TP + 1e-6)
+    mean_box_iou = np.mean(matched_ious) if matched_ious else 0.0
     return {
         "precision": precision,
         "recall": recall,
         "f1": f1,
         "label_accuracy": label_accuracy,
+        "mean_box_iou": mean_box_iou,
         "TP": TP,
         "FP": FP,
         "FN": FN
     }
+
+
+def compute_detection_metrics_per_class(gt_boxes, gt_labels, pred_boxes, pred_labels, iou_threshold=0.5):
+    """
+    Computes precision for each class by grouping detections based on the predicted class.
+    Returns a dictionary mapping class label to precision.
+    """
+    classes = set(gt_labels).union(set(pred_labels))
+    class_precisions = {}
+    for cls in classes:
+        # Get GT and prediction boxes for the class.
+        gt_cls_boxes = [box for box, label in zip(gt_boxes, gt_labels) if label == cls]
+        pred_cls_boxes = [box for box, label in zip(pred_boxes, pred_labels) if label == cls]
+        TP = 0
+        FP = 0
+        matched = set()
+        for p_box in pred_cls_boxes:
+            best_iou = 0
+            best_idx = -1
+            for idx, g_box in enumerate(gt_cls_boxes):
+                if idx in matched:
+                    continue
+                iou = compute_iou(p_box, g_box)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_idx = idx
+            if best_iou >= iou_threshold:
+                TP += 1
+                matched.add(best_idx)
+            else:
+                FP += 1
+        precision = TP / (TP + FP + 1e-6)
+        class_precisions[cls] = precision
+    return class_precisions
+
+
+def compute_map_from_class_precisions(class_precisions):
+    """
+    Computes mAP as the unweighted mean of per-class precision values.
+    (This is a simplified approximation, not the full AP integration over all thresholds.)
+    """
+    if len(class_precisions) == 0:
+        return 0.0
+    return np.mean(list(class_precisions.values()))
 
 
 def aggregate_metric(values):
@@ -116,7 +166,9 @@ def evaluate_sequence_metrics(sequence_name, model_name, det_iou_threshold=IOU_T
     """
     Evaluates a given sequence for a specified model by computing:
       - Pixel-wise IoU and Dice for segmentation masks.
-      - Detection metrics for bounding boxes and labels.
+      - Detection metrics for bounding boxes and labels (including mean box IoU).
+      - Per-class precision and a computed mAP (as an unweighted mean of per-class precision).
+
     Note: For detection metrics, this function uses all predictions (raw metrics without filtering by score).
     Also computes temporal consistency (mean, std, variance) of these metrics across frames.
 
@@ -139,6 +191,13 @@ def evaluate_sequence_metrics(sequence_name, model_name, det_iou_threshold=IOU_T
     recall_vals = []
     f1_vals = []
     label_acc_vals = []
+    box_iou_vals = []  # To store average IoU for matched boxes per frame.
+
+    # Also accumulate all boxes and labels for per-class evaluation.
+    all_gt_boxes = []
+    all_gt_labels = []
+    all_pred_boxes = []
+    all_pred_labels = []
 
     for frame, gt_data in gt_ann.items():
         # Segmentation metrics.
@@ -153,17 +212,21 @@ def evaluate_sequence_metrics(sequence_name, model_name, det_iou_threshold=IOU_T
         # Detection metrics.
         gt_boxes = gt_data.get("boxes", [])
         gt_labels = gt_data.get("labels", [])
+        all_gt_boxes.extend(gt_boxes)
+        all_gt_labels.extend(gt_labels)
         if frame in pred_ann:
             pred_frame = pred_ann[frame]
-            # Use all predicted boxes and labels (ignore scores for raw metrics).
             pred_boxes = pred_frame.get("boxes", [])
             pred_labels = pred_frame.get("labels", [])
+            all_pred_boxes.extend(pred_boxes)
+            all_pred_labels.extend(pred_labels)
             det_metrics = compute_detection_metrics(gt_boxes, gt_labels, pred_boxes, pred_labels,
                                                     iou_threshold=det_iou_threshold)
             precision_vals.append(det_metrics["precision"])
             recall_vals.append(det_metrics["recall"])
             f1_vals.append(det_metrics["f1"])
             label_acc_vals.append(det_metrics["label_accuracy"])
+            box_iou_vals.append(det_metrics["mean_box_iou"])
 
     aggregated_seg = {
         "pixel_iou": aggregate_metric(pixel_iou_vals),
@@ -173,8 +236,16 @@ def evaluate_sequence_metrics(sequence_name, model_name, det_iou_threshold=IOU_T
         "precision": aggregate_metric(precision_vals),
         "recall": aggregate_metric(recall_vals),
         "f1": aggregate_metric(f1_vals),
-        "label_accuracy": aggregate_metric(label_acc_vals)
+        "label_accuracy": aggregate_metric(label_acc_vals),
+        "box_iou": aggregate_metric(box_iou_vals)
     }
+
+    # Compute per-class detection precision and mAP for the entire sequence.
+    class_precisions = compute_detection_metrics_per_class(all_gt_boxes, all_gt_labels, all_pred_boxes, all_pred_labels,
+                                                           iou_threshold=det_iou_threshold)
+    mAP = compute_map_from_class_precisions(class_precisions)
+    aggregated_det["per_class_precision"] = class_precisions
+    aggregated_det["mAP"] = mAP
 
     return {
         "segmentation": aggregated_seg,
@@ -209,8 +280,7 @@ def save_model_metrics(metrics, model_name):
     """
     Saves the aggregated metrics for a model into a JSON file in the 'model_metrics' directory.
     """
-    output_dir = Path(
-        "/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/model_metrics") / model_name
+    output_dir = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/model_metrics") / model_name
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / f"{model_name}_metrics.json"
     with open(output_file, "w") as f:

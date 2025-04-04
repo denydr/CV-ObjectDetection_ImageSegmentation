@@ -15,5 +15,3 @@ output/.ipynb_checkpoints
 .DS_Store
 output/.DS_Store
 metrics_artifacts/
-model_metrics/
-notebooks/06_matching_GT_to_predictions_JSON.ipynb
