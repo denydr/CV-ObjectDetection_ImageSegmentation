@@ -181,6 +181,42 @@ def load_predicted_json(model_name, sequence_name):
         data = json.load(f)
     return data
 
+def load_predicted_json_with_thresholding(model_name, sequence_name, confidence_threshold=None, max_instances=None):
+    """
+    Loads the predicted JSON and applies confidence filtering and instance limiting.
+    """
+    predictions = load_predicted_json(model_name, sequence_name)
+    filtered_predictions = {}
+
+    for frame_name, frame_data in predictions.items():
+        boxes = frame_data.get("boxes", [])
+        labels = frame_data.get("labels", [])
+        scores = frame_data.get("scores", [])  # Only needed if thresholding
+
+        if confidence_threshold is not None and scores:
+            # Filter by confidence
+            filtered = [
+                (b, l, s) for b, l, s in zip(boxes, labels, scores) if s >= confidence_threshold
+            ]
+        else:
+            filtered = list(zip(boxes, labels, scores)) if scores else list(zip(boxes, labels))
+
+        # Limit max instances
+        if max_instances is not None:
+            filtered = sorted(filtered, key=lambda x: x[2] if len(x) == 3 else 1.0, reverse=True)
+            filtered = filtered[:max_instances]
+
+        # Unpack again
+        new_boxes = [item[0] for item in filtered]
+        new_labels = [item[1] for item in filtered]
+
+        filtered_predictions[frame_name] = {
+            "boxes": new_boxes,
+            "labels": new_labels
+        }
+
+    return filtered_predictions
+
 
 def load_predicted_masks(model_name, sequence_name):
     """

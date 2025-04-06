@@ -6,7 +6,11 @@ import optuna
 import json
 from pathlib import Path
 
-from metrics_evaluation import evaluate_model_metrics, aggregate_model_metrics
+from metrics_evaluation import (
+    evaluate_model_metrics_with_thresholds,
+    save_thresholded_metrics,
+    aggregate_model_metrics
+)
 from config import IOU_THRESHOLD
 
 MODEL_METRICS_DIR = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/model_metrics")
@@ -79,13 +83,9 @@ class MetricsEvaluationGUI(tk.Tk):
             conf = trial.suggest_float("confidence", 0.1, 0.99)
             max_inst = trial.suggest_int("max_instances", 1, 10)
 
-            self.conf_threshold.set(conf)
-            self.max_instances.set(max_inst)
-
-            metrics = evaluate_model_metrics(model_name=model)
+            metrics = evaluate_model_metrics_with_thresholds(model, conf, max_inst)
             aggregated = aggregate_model_metrics(metrics)
-            mAP = aggregated["all_objects"].get("mAP", 0.0)
-            return mAP
+            return aggregated["all_objects"].get("mAP", 0.0)
 
         def optimization():
             study = optuna.create_study(direction="maximize")
@@ -100,23 +100,32 @@ class MetricsEvaluationGUI(tk.Tk):
 
             self.details_text.insert(tk.END, f"Best thresholds - Confidence: {best_conf:.3f}, Max Instances: {best_inst}\n")
 
-            metrics = evaluate_model_metrics(model_name=model)
+            metrics = evaluate_model_metrics_with_thresholds(model, best_conf, best_inst)
             self.calibrated_metrics = aggregate_model_metrics(metrics)
             self.best_mAP = self.calibrated_metrics["all_objects"].get("mAP", None)
             self.update_metrics_table(self.calibrated_metrics)
+
+            # Save to calibrated subdirectory
+            self.save_calibrated_metrics(auto=True)
 
         threading.Thread(target=optimization, daemon=True).start()
 
     def run_manual_evaluation(self):
         model = self.selected_model.get()
-        self.details_text.insert(tk.END, f"Running manual evaluation for {model}...\n")
+        conf = self.conf_threshold.get()
+        max_inst = self.max_instances.get()
+
+        self.details_text.insert(tk.END, f"Running manual thresholded evaluation for {model}...\n")
 
         def evaluation():
-            metrics = evaluate_model_metrics(model_name=model)
+            metrics = evaluate_model_metrics_with_thresholds(model, conf, max_inst)
             self.calibrated_metrics = aggregate_model_metrics(metrics)
             self.best_mAP = self.calibrated_metrics["all_objects"].get("mAP", None)
             self.update_metrics_table(self.calibrated_metrics)
             self.details_text.insert(tk.END, f"Evaluation complete. mAP: {self.best_mAP:.3f}\n")
+
+            # Save manually
+            self.save_calibrated_metrics(auto=False)
 
         threading.Thread(target=evaluation, daemon=True).start()
 
@@ -129,23 +138,26 @@ class MetricsEvaluationGUI(tk.Tk):
             f1 = cat_metrics.get("detection", {}).get("f1", {}).get("mean", 0.0)
             mAP = cat_metrics.get("mAP", 0.0)
             proc = cat_metrics.get("processing_time", {}).get("mean", 0.0)
-
             self.metrics_table.insert("", "end", values=(category, f"{mAP:.3f}", f"{f1:.3f}", f"{proc:.3f}"))
 
-    def save_calibrated_metrics(self):
+    def save_calibrated_metrics(self, auto=False):
         if not self.calibrated_metrics:
             messagebox.showwarning("Nothing to save", "No metrics available. Run calibration or evaluation first.")
             return
 
         model = self.selected_model.get()
-        out_dir = MODEL_METRICS_DIR / model / "thresholded_metrics"
+        conf = self.conf_threshold.get()
+        max_inst = self.max_instances.get()
+
+        subdir = "calibrated" if auto else "manual"
+        out_dir = MODEL_METRICS_DIR / model / "thresholded_metrics" / subdir
         out_dir.mkdir(parents=True, exist_ok=True)
-        out_file = out_dir / f"{model}_thresholded_metrics.json"
+        out_file = out_dir / f"{model}_conf{conf:.2f}_max{int(max_inst)}.json"
 
         results = {
             "model": model,
-            "optimized_confidence": self.conf_threshold.get(),
-            "optimized_max_instances": self.max_instances.get(),
+            "optimized_confidence": conf,
+            "optimized_max_instances": max_inst,
             "best_mAP": self.best_mAP,
             "thresholded_metrics": self.calibrated_metrics
         }

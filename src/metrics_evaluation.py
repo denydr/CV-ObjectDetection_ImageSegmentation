@@ -17,7 +17,7 @@ from config import (
 )
 
 # ----- Import loader functions for GT and predictions -----
-from data_loader import load_gt_json, load_gt_masks, load_predicted_json, load_predicted_masks
+from data_loader import load_gt_json, load_gt_masks, load_predicted_json, load_predicted_json_with_thresholding, load_predicted_masks
 
 # ===================================================
 # RAW METRICS COMPUTATION FUNCTIONS (Per-Sequence)
@@ -239,6 +239,73 @@ def evaluate_sequence_metrics(sequence_name, model_name, det_iou_threshold=IOU_T
         "processing_time": processing_time
     }
 
+def evaluate_sequence_metrics_with_thresholds(sequence_name, model_name, iou_threshold=IOU_THRESHOLD,
+                                              confidence_threshold=None, max_instances=None):
+    """
+    Evaluates a sequence with confidence and max instance thresholding.
+    """
+    start_time = time.time()
+    gt_ann = load_gt_json(sequence_name)
+    gt_masks = load_gt_masks(sequence_name)
+    pred_ann = load_predicted_json_with_thresholding(model_name, sequence_name, confidence_threshold, max_instances)
+    pred_masks = load_predicted_masks(model_name, sequence_name)
+
+    pixel_iou_vals, dice_vals = [], []
+    precision_vals, recall_vals, f1_vals, label_acc_vals, box_iou_vals = [], [], [], [], []
+
+    all_gt_boxes, all_gt_labels = [], []
+    all_pred_boxes, all_pred_labels = [], []
+
+    for frame, gt_data in gt_ann.items():
+        if frame in gt_masks and frame in pred_masks:
+            gt_mask = gt_masks[frame]
+            pred_mask = pred_masks[frame]
+            pixel_iou_vals.append(compute_pixel_iou(gt_mask, pred_mask))
+            dice_vals.append(compute_dice(gt_mask, pred_mask))
+
+        gt_boxes = gt_data.get("boxes", [])
+        gt_labels = gt_data.get("labels", [])
+        all_gt_boxes.extend(gt_boxes)
+        all_gt_labels.extend(gt_labels)
+
+        if frame in pred_ann:
+            pred_frame = pred_ann[frame]
+            pred_boxes = pred_frame.get("boxes", [])
+            pred_labels = pred_frame.get("labels", [])
+            all_pred_boxes.extend(pred_boxes)
+            all_pred_labels.extend(pred_labels)
+
+            det_metrics = compute_detection_metrics(gt_boxes, gt_labels, pred_boxes, pred_labels, iou_threshold)
+            precision_vals.append(det_metrics["precision"])
+            recall_vals.append(det_metrics["recall"])
+            f1_vals.append(det_metrics["f1"])
+            label_acc_vals.append(det_metrics["label_accuracy"])
+            box_iou_vals.append(det_metrics["mean_box_iou"])
+
+    aggregated_seg = {
+        "pixel_iou": aggregate_metric(pixel_iou_vals),
+        "dice": aggregate_metric(dice_vals)
+    }
+    aggregated_det = {
+        "precision": aggregate_metric(precision_vals),
+        "recall": aggregate_metric(recall_vals),
+        "f1": aggregate_metric(f1_vals),
+        "label_accuracy": aggregate_metric(label_acc_vals),
+        "box_iou": aggregate_metric(box_iou_vals)
+    }
+    class_precisions = compute_detection_metrics_per_class(all_gt_boxes, all_gt_labels, all_pred_boxes, all_pred_labels,
+                                                           iou_threshold=iou_threshold)
+    mAP = compute_map_from_class_precisions(class_precisions)
+    aggregated_det["per_class_precision"] = class_precisions
+    aggregated_det["mAP"] = mAP
+
+    processing_time = time.time() - start_time
+    return {
+        "segmentation": aggregated_seg,
+        "detection": aggregated_det,
+        "processing_time": processing_time
+    }
+
 
 def evaluate_model_metrics(model_name, det_iou_threshold=IOU_THRESHOLD):
     """
@@ -260,6 +327,29 @@ def evaluate_model_metrics(model_name, det_iou_threshold=IOU_THRESHOLD):
     model_metrics["processing_time"] = aggregate_metric(processing_times)
     return model_metrics
 
+def evaluate_model_metrics_with_thresholds(model_name, confidence_threshold, max_instances, iou_threshold=IOU_THRESHOLD):
+    """
+    Evaluates all sequences for a given model using confidence and max instance thresholding.
+    """
+    gt_json_dir = Path(GT_JSONS_DIR)
+    seq_files = list(gt_json_dir.glob("*_gt.json"))
+    sequence_names = [f.stem.replace("_gt", "") for f in seq_files]
+
+    model_metrics = {}
+    processing_times = []
+    for seq in sequence_names:
+        print(f"[THRESHOLDED] Evaluating sequence '{seq}' for model '{model_name}'...")
+        seq_metrics = evaluate_sequence_metrics_with_thresholds(
+            seq, model_name,
+            iou_threshold=iou_threshold,
+            confidence_threshold=confidence_threshold,
+            max_instances=max_instances
+        )
+        model_metrics[seq] = seq_metrics
+        processing_times.append(seq_metrics.get("processing_time", 0))
+
+    model_metrics["processing_time"] = aggregate_metric(processing_times)
+    return model_metrics
 
 def save_model_metrics(metrics, model_name):
     """
@@ -272,6 +362,13 @@ def save_model_metrics(metrics, model_name):
         json.dump(metrics, f, indent=4)
     print(f"Saved raw metrics for model '{model_name}' to {output_file}")
 
+def save_thresholded_metrics(metrics, model_name, conf, max_inst):
+    name = f"{model_name}_conf{conf:.2f}_max{max_inst}"
+    out_dir = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/model_metrics")/ model_name / "thresholded_metrics"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{name}.json"
+    with open(out_path, "w") as f:
+        json.dump(metrics, f, indent=4)
 
 # ===================================================
 # AGGREGATION FUNCTIONS (Over Sequence Categories)
@@ -436,3 +533,30 @@ if __name__ == "__main__":
         with open(output_file, "w") as f:
             json.dump(aggregated_metrics, f, indent=4)
         print(f"Aggregated metrics for model '{model}' saved to {output_file}")
+
+    # --- Thresholded Metrics Evaluation & Saving ---
+    for model in models:
+        print(
+            f"Evaluating thresholded metrics for model: {model} with conf={CONFIDENCE_THRESHOLD}, max_inst={MAX_INSTANCES}")
+
+        # Evaluate per-sequence thresholded metrics
+        thresholded_per_sequence = evaluate_model_metrics_with_thresholds(
+            model,
+            confidence_threshold=CONFIDENCE_THRESHOLD,
+            max_instances=MAX_INSTANCES,
+            iou_threshold=IOU_THRESHOLD
+        )
+
+        # Save per-sequence metrics
+        threshold_str = f"conf{CONFIDENCE_THRESHOLD:.2f}_max{MAX_INSTANCES}"
+        per_seq_dir = base_model_metrics_dir / model / "thresholded_metrics" / "per_sequence"
+        per_seq_dir.mkdir(parents=True, exist_ok=True)
+        per_seq_path = per_seq_dir / f"{model}_{threshold_str}_per_sequence.json"
+        with open(per_seq_path, "w") as f:
+            json.dump(thresholded_per_sequence, f, indent=4)
+        print(f"Saved per-sequence thresholded metrics for model '{model}' to {per_seq_path}")
+
+        # Save aggregated version of those same thresholded metrics
+        aggregated_thresh = aggregate_model_metrics(thresholded_per_sequence)
+        save_thresholded_metrics(aggregated_thresh, model, CONFIDENCE_THRESHOLD, MAX_INSTANCES)
+        print(f"Saved aggregated thresholded metrics for model '{model}'")
