@@ -19,7 +19,6 @@ from config import (
 # ----- Import loader functions for GT and predictions -----
 from data_loader import load_gt_json, load_gt_masks, load_predicted_json, load_predicted_masks
 
-
 # ===================================================
 # RAW METRICS COMPUTATION FUNCTIONS (Per-Sequence)
 # ===================================================
@@ -369,28 +368,6 @@ def aggregate_model_metrics(raw_metrics):
     }
 
 # ===================================================
-# THRESHOLDED METRICS AGGREGATION
-# ===================================================
-
-def aggregate_thresholded_metrics(thresholded_metrics):
-    """
-    Aggregates thresholded per-sequence metrics into single_object, multi_object, and all_objects categories.
-    """
-    single_object_list, multi_object_list = get_sequence_lists_from_gt()
-    all_sequences = list(thresholded_metrics.keys())
-
-    agg_single = aggregate_over_sequences(thresholded_metrics, single_object_list)
-    agg_multi = aggregate_over_sequences(thresholded_metrics, multi_object_list)
-    agg_all = aggregate_over_sequences(thresholded_metrics, all_sequences)
-
-    return {
-        "single_object": agg_single,
-        "multi_object": agg_multi,
-        "all_objects": agg_all
-    }
-
-
-# ===================================================
 # CACHING FUNCTIONS
 # ===================================================
 
@@ -431,138 +408,6 @@ def get_cached_aggregated_metrics(model_name):
             json.dump(aggregated_metrics, f, indent=4)
         print(f"Saved aggregated metrics for model '{model_name}' to {cache_file}")
         return aggregated_metrics
-
-
-# ===================================================
-# THRESHOLDED EVALUATION FUNCTIONALITY
-# ===================================================
-
-def evaluate_with_thresholds(model_name, conf_threshold, max_instances):
-    """
-    Re-evaluates all sequences for the given model by applying the specified confidence threshold
-    and max_instances limit to the raw predictions. Aggregates metrics across single_object, multi_object,
-    and all_objects categories.
-
-    Returns:
-        overall_mAP (float): Overall mAP averaged over sequences.
-        aggregated_metrics (dict): Aggregated metrics grouped by categories.
-    """
-    gt_json_dir = Path(GT_JSONS_DIR)
-    seq_files = list(gt_json_dir.glob("*_gt.json"))
-    sequence_names = [f.stem.replace("_gt", "") for f in seq_files]
-
-    mAPs = []
-    all_metrics = {}
-    for seq in sequence_names:
-        print(f"Evaluating sequence {seq} with conf_threshold={conf_threshold} and max_instances={max_instances}")
-        seq_metrics = evaluate_sequence_metrics_thresholded(seq, model_name, conf_threshold, max_instances,
-                                                            det_iou_threshold=IOU_THRESHOLD)
-        all_metrics[seq] = seq_metrics
-        mAPs.append(seq_metrics.get("detection", {}).get("mAP", 0))
-
-    overall_mAP = float(np.mean(mAPs)) if mAPs else 0.0
-    aggregated_metrics = aggregate_thresholded_metrics(all_metrics)
-
-    return overall_mAP, aggregated_metrics
-
-
-def evaluate_sequence_metrics_thresholded(sequence_name, model_name, conf_threshold, max_instances,
-                                          det_iou_threshold=IOU_THRESHOLD):
-    """
-    Evaluates a given sequence for a specified model by applying a confidence threshold and max_instances limit.
-    This function re-loads the raw predictions, filters detections by conf_threshold, limits the number of detections
-    to max_instances, and then computes segmentation and detection metrics.
-
-    Returns:
-        dict: Aggregated metrics for the sequence (including processing_time).
-    """
-    start_time = time.time()
-    gt_ann = load_gt_json(sequence_name)
-    gt_masks = load_gt_masks(sequence_name)
-    pred_ann = load_predicted_json(model_name, sequence_name)
-    pred_masks = load_predicted_masks(model_name, sequence_name)
-
-    pixel_iou_vals = []
-    dice_vals = []
-    precision_vals = []
-    recall_vals = []
-    f1_vals = []
-    label_acc_vals = []
-    box_iou_vals = []
-
-    all_gt_boxes = []
-    all_gt_labels = []
-    all_pred_boxes = []
-    all_pred_labels = []
-
-    for frame, gt_data in gt_ann.items():
-        if frame in gt_masks and frame in pred_masks:
-            gt_mask = gt_masks[frame]
-            pred_mask = pred_masks[frame]
-            pixel_iou_vals.append(compute_pixel_iou(gt_mask, pred_mask))
-            dice_vals.append(compute_dice(gt_mask, pred_mask))
-
-        gt_boxes = gt_data.get("boxes", [])
-        gt_labels = gt_data.get("labels", [])
-        all_gt_boxes.extend(gt_boxes)
-        all_gt_labels.extend(gt_labels)
-
-        if frame in pred_ann:
-            pred_frame = pred_ann[frame]
-            raw_pred_boxes = pred_frame.get("boxes", [])
-            raw_pred_labels = pred_frame.get("labels", [])
-            raw_pred_scores = pred_frame.get("scores", [])
-
-            # Filter out predictions below the confidence threshold.
-            filtered_boxes = []
-            filtered_labels = []
-            for box, label, score in zip(raw_pred_boxes, raw_pred_labels, raw_pred_scores):
-                if score >= conf_threshold:
-                    filtered_boxes.append(box)
-                    filtered_labels.append(label)
-
-            # Limit the number of detections to max_instances.
-            if len(filtered_boxes) > max_instances:
-                valid_scores = [score for score in raw_pred_scores if score >= conf_threshold]
-                sorted_indices = np.argsort([-s for s in valid_scores])
-                filtered_boxes = [filtered_boxes[i] for i in sorted_indices[:max_instances]]
-                filtered_labels = [filtered_labels[i] for i in sorted_indices[:max_instances]]
-
-            all_pred_boxes.extend(filtered_boxes)
-            all_pred_labels.extend(filtered_labels)
-
-            det_metrics = compute_detection_metrics(gt_boxes, gt_labels, filtered_boxes, filtered_labels,
-                                                    iou_threshold=det_iou_threshold)
-            precision_vals.append(det_metrics["precision"])
-            recall_vals.append(det_metrics["recall"])
-            f1_vals.append(det_metrics["f1"])
-            label_acc_vals.append(det_metrics["label_accuracy"])
-            box_iou_vals.append(det_metrics["mean_box_iou"])
-
-    aggregated_seg = {
-        "pixel_iou": aggregate_metric(pixel_iou_vals),
-        "dice": aggregate_metric(dice_vals)
-    }
-    aggregated_det = {
-        "precision": aggregate_metric(precision_vals),
-        "recall": aggregate_metric(recall_vals),
-        "f1": aggregate_metric(f1_vals),
-        "label_accuracy": aggregate_metric(label_acc_vals),
-        "box_iou": aggregate_metric(box_iou_vals)
-    }
-    class_precisions = compute_detection_metrics_per_class(all_gt_boxes, all_gt_labels, all_pred_boxes, all_pred_labels,
-                                                           iou_threshold=det_iou_threshold)
-    mAP = compute_map_from_class_precisions(class_precisions)
-    aggregated_det["per_class_precision"] = class_precisions
-    aggregated_det["mAP"] = mAP
-
-    processing_time = time.time() - start_time
-    return {
-        "segmentation": aggregated_seg,
-        "detection": aggregated_det,
-        "processing_time": processing_time
-    }
-
 
 # ===================================================
 # MAIN EXECUTION (Raw Metrics and Aggregation)
