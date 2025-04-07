@@ -447,55 +447,174 @@
 
 
 # --Temporal consistency analysis-> PER-SEQUENCE-------------------------------
+# import json
+# import matplotlib.pyplot as plt
+# from pathlib import Path
+# import numpy as np
+#
+# # Paths
+# BASE_METRICS_DIR = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/model_metrics")
+# OUTPUT_DIR = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/results_visualization/graphs/temporal_consistency")
+# OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+#
+# MODELS = ["yolo", "maskrcnn", "yolo_deeplab"]
+#
+# def load_dice_std_per_sequence(path):
+#     with open(path, "r") as f:
+#         data = json.load(f)
+#     stds = {}
+#     for seq, metrics in data.items():
+#         if seq == "processing_time":
+#             continue
+#         dice_std = metrics.get("segmentation", {}).get("dice", {}).get("std", None)
+#         if dice_std is not None:
+#             stds[seq] = dice_std
+#     return stds
+#
+# def visualize_raw_temporal_consistency():
+#     for model in MODELS:
+#         raw_path = BASE_METRICS_DIR / model / f"{model}_metrics.json"
+#         print(f"🔍 Raw path: {raw_path}, exists? {raw_path.exists()}")
+#
+#         if not raw_path.exists():
+#             continue
+#
+#         results = load_dice_std_per_sequence(raw_path)
+#
+#         # Sort sequences by name
+#         sequences = sorted(results.keys())
+#         dice_stds = [results[seq] for seq in sequences]
+#
+#         plt.figure(figsize=(14, 6))
+#         plt.plot(sequences, dice_stds, marker='o', linestyle='-', color='blue', label='Raw Dice Std')
+#         plt.xticks(rotation=90)
+#         plt.title(f"{model.upper()} - Raw Temporal Consistency (Dice Std per Sequence)")
+#         plt.xlabel("Sequence")
+#         plt.ylabel("Dice Std Deviation")
+#         plt.grid(True)
+#         plt.tight_layout()
+#         plt.savefig(OUTPUT_DIR / f"{model}_raw_temporal_consistency_per_sequence.png")
+#         plt.close()
+#         print(f"✅ Saved: {model}_raw_temporal_consistency_per_sequence.png")
+#
+# if __name__ == "__main__":
+#     visualize_raw_temporal_consistency()
+
+
+
+# --OBJECT DETECTION & SEGMENTATION SAVED IN A VIDEO-------------------------------
+import os
 import json
-import matplotlib.pyplot as plt
-from pathlib import Path
+import cv2
 import numpy as np
+from pathlib import Path
 
-# Paths
-BASE_METRICS_DIR = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/model_metrics")
-OUTPUT_DIR = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/results_visualization/graphs/temporal_consistency")
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+from model_handler import get_model
+from data_loader import load_raw_frames, load_predicted_json, load_raw_predicted_masks
+from label_standardization import load_canonical_mapping
+from config import CANONICAL_MAPPING_PATH, CONFIDENCE_THRESHOLD, MAX_INSTANCES
 
-MODELS = ["yolo", "maskrcnn", "yolo_deeplab"]
+def run_video_inference(sequence_name, model, model_name, canonical_mapping, save_path):
+    print(f"🎬 Running inference on '{sequence_name}' with model '{model_name}'...")
 
-def load_dice_std_per_sequence(path):
-    with open(path, "r") as f:
-        data = json.load(f)
-    stds = {}
-    for seq, metrics in data.items():
-        if seq == "processing_time":
-            continue
-        dice_std = metrics.get("segmentation", {}).get("dice", {}).get("std", None)
-        if dice_std is not None:
-            stds[seq] = dice_std
-    return stds
+    # Load predicted annotations, raw frames, and raw predicted masks
+    pred_json = load_predicted_json(model_name, sequence_name)
+    raw_frames = load_raw_frames(sequence_name)
+    pred_masks_dict = load_raw_predicted_masks(model_name, sequence_name)  # dictionary: {frame_filename: mask image}
 
-def visualize_raw_temporal_consistency():
-    for model in MODELS:
-        raw_path = BASE_METRICS_DIR / model / f"{model}_metrics.json"
-        print(f"🔍 Raw path: {raw_path}, exists? {raw_path.exists()}")
+    # Reverse canonical mapping to get id-to-label dictionary
+    id_to_label = {v: k for k, v in canonical_mapping.items()}
 
-        if not raw_path.exists():
-            continue
+    # Video writer setup
+    h, w = raw_frames[0][1].shape[:2]
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out_video = cv2.VideoWriter(str(save_path), fourcc, 10.0, (w, h))
 
-        results = load_dice_std_per_sequence(raw_path)
+    for frame_filename, frame_img in raw_frames:
+        pred_data = pred_json.get(frame_filename, {})
+        boxes = np.array(pred_data.get("boxes", []))
+        labels = np.array(pred_data.get("labels", []))
+        scores = np.array(pred_data.get("scores", []))
 
-        # Sort sequences by name
-        sequences = sorted(results.keys())
-        dice_stds = [results[seq] for seq in sequences]
+        # Apply thresholding on scores
+        if scores.size > 0:
+            keep = scores >= CONFIDENCE_THRESHOLD
+            boxes = boxes[keep]
+            labels = labels[keep]
+            scores = scores[keep]
 
-        plt.figure(figsize=(14, 6))
-        plt.plot(sequences, dice_stds, marker='o', linestyle='-', color='blue', label='Raw Dice Std')
-        plt.xticks(rotation=90)
-        plt.title(f"{model.upper()} - Raw Temporal Consistency (Dice Std per Sequence)")
-        plt.xlabel("Sequence")
-        plt.ylabel("Dice Std Deviation")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.savefig(OUTPUT_DIR / f"{model}_raw_temporal_consistency_per_sequence.png")
-        plt.close()
-        print(f"✅ Saved: {model}_raw_temporal_consistency_per_sequence.png")
+        # Limit to top MAX_INSTANCES
+        if scores.size > MAX_INSTANCES:
+            top = np.argsort(scores)[-MAX_INSTANCES:][::-1]
+            boxes = boxes[top]
+            labels = labels[top]
+
+        # Convert numeric label IDs to canonical names
+        readable_labels = [id_to_label.get(int(lbl), f"label_{lbl}") for lbl in labels]
+
+        # Start with a copy of the original frame
+        overlay = frame_img.copy()
+
+        # --- Overlay predicted masks from raw predictions ---
+        mask = pred_masks_dict.get(frame_filename)
+        if mask is not None:
+            # Resize mask if necessary
+            if mask.shape[:2] != (h, w):
+                mask = cv2.resize(mask, (w, h), interpolation=cv2.INTER_NEAREST)
+            mask = mask.astype(np.uint8)
+            if len(mask.shape) == 2:
+                # For single-channel (binary) masks, convert to BGR
+                mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+                overlay = cv2.addWeighted(overlay, 0.7, mask_bgr, 0.3, 0)
+            elif len(mask.shape) == 3 and mask.shape[2] == 3:
+                # For color-coded masks, overlay directly
+                overlay = cv2.addWeighted(overlay, 0.7, mask, 0.3, 0)
+            else:
+                # Fallback: convert to grayscale then to BGR
+                mask_gray = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
+                mask_bgr = cv2.cvtColor(mask_gray, cv2.COLOR_GRAY2BGR)
+                overlay = cv2.addWeighted(overlay, 0.7, mask_bgr, 0.3, 0)
+        # ----------------------------------------------------
+
+        # Draw bounding boxes and labels on the overlay
+        for i, (box, label) in enumerate(zip(boxes, readable_labels)):
+            x1, y1, x2, y2 = map(int, box)
+            color = (0, 255, 0)  # you may also choose to use a function to generate unique colors
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(overlay, str(label), (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+
+        out_video.write(overlay)
+
+    out_video.release()
+    print(f"✅ Saved video to {save_path}\n")
+
+def main():
+    canonical_mapping = load_canonical_mapping()
+    output_dir = Path("/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/results_visualization/videos")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    models = {
+        "yolo": {
+            "sequence": "horsejump-high",
+            "model": get_model("yolo"),
+            "save_path": "/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/results_visualization/videos/yolo_horsejump-high_thresh080_max3.mp4"
+        },
+        "yolo_deeplab": {
+            "sequence": "bike-packing",
+            "model": get_model("yolo_deeplab"),
+            "save_path": "/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/results_visualization/videos/yolo_deeplab_bike-packing_thresh080_max3.mp4"
+        }
+    }
+
+    for name, details in models.items():
+        run_video_inference(
+            sequence_name=details["sequence"],
+            model=details["model"],
+            model_name=name,
+            canonical_mapping=canonical_mapping,
+            save_path=details["save_path"]
+        )
 
 if __name__ == "__main__":
-    visualize_raw_temporal_consistency()
+    main()

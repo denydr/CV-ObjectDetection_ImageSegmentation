@@ -217,6 +217,35 @@ def load_predicted_json_with_thresholding(model_name, sequence_name, confidence_
 
     return filtered_predictions
 
+def load_raw_predicted_masks(model_name, sequence_name):
+    """
+    Loads raw predicted masks for a given sequence and model from the predicted masks directory.
+
+    Returns:
+        dict: Mapping from filename to mask image (loaded with IMREAD_UNCHANGED).
+    """
+    from config import YOLO_RAW_PREDICTED_MASKS_DIR, MASKRCNN_RAW_PREDICTED_MASKS_DIR, YOLO_DEEPLAB_RAW_PREDICTED_MASKS_DIR
+    model_name_lower = model_name.lower()
+    if model_name_lower == "yolo":
+        base = YOLO_RAW_PREDICTED_MASKS_DIR
+    elif model_name_lower == "maskrcnn":
+        base = MASKRCNN_RAW_PREDICTED_MASKS_DIR
+    elif model_name_lower == "yolo_deeplab":
+        base = YOLO_DEEPLAB_RAW_PREDICTED_MASKS_DIR
+    else:
+        raise ValueError(f"Unknown model name: {model_name}")
+    seq_path = base / sequence_name
+    masks = {}
+    if not seq_path.exists():
+        print(f"Warning: Predicted mask folder not found for {model_name} sequence {sequence_name}: {seq_path}")
+        return masks
+    for mask_file in sorted(seq_path.glob("*.png")):
+        mask = cv2.imread(str(mask_file), cv2.IMREAD_UNCHANGED)
+        if mask is None:
+            print(f"Warning: Could not load predicted mask {mask_file.name}")
+            continue
+        masks[mask_file.name] = mask
+    return masks
 
 def load_predicted_masks(model_name, sequence_name):
     """

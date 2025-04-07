@@ -43,8 +43,8 @@ DEEPLAB_PATH = DEEPLAB_DIR / "deeplabv3_resnet101_coco.pth"
 
 # Evaluation Parameters
 IOU_THRESHOLD = 0.5         # IoU threshold for matching predictions to ground truth
-CONFIDENCE_THRESHOLD = 0.5  # Threshold for detection confidence (if applicable)
-MAX_INSTANCES = 5
+CONFIDENCE_THRESHOLD = 0.8 # Threshold for detection confidence (if applicable) CONFIDENCE_THRESHOLD = 0.8
+MAX_INSTANCES = 3 # MAX_INSTANCES = 5
 DEVICE = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") else "cpu"
 
 # Other evaluation configuration (you can add more as needed)
@@ -60,17 +60,21 @@ GT_MASKS_DIR = PROJECT_ROOT / "metrics_artifacts" / "gt_annotations" / "gt_masks
 GT_JSONS_DIR = PROJECT_ROOT / "metrics_artifacts" / "gt_annotations" / "gt_JSONs"
 
 # Predicted Masks & JSONs (Preprocessed):
-PREDICTED_BASE_DIR = PROJECT_ROOT / "metrics_artifacts" / "predictions" / "predicted_masks_preprocessed"
+PREDICTED_BASE_DIR = PROJECT_ROOT / "metrics_artifacts" / "predictions" / "predicted_masks_preprocessed" #standardized masks
+PREDICTED_RAW_BASE_DIR = PROJECT_ROOT / "metrics_artifacts" / "predictions" / "predicted_masks" #raw predicted masks
 
 # For YOLO:
+YOLO_RAW_PREDICTED_MASKS_DIR = PREDICTED_RAW_BASE_DIR / "yolo"
 YOLO_PREDICTED_MASKS_DIR = PREDICTED_BASE_DIR / "yolo" / "yolo_predicted_masks"
 YOLO_PREDICTED_JSONS_DIR = PREDICTED_BASE_DIR / "yolo" / "yolo_predicted_JSONs"
 
 # For Mask R-CNN:
+MASKRCNN_RAW_PREDICTED_MASKS_DIR = PREDICTED_RAW_BASE_DIR / "maskrcnn"
 MASKRCNN_PREDICTED_MASKS_DIR = PREDICTED_BASE_DIR / "maskrcnn" / "maskrcnn_predicted_masks"
 MASKRCNN_PREDICTED_JSONS_DIR = PREDICTED_BASE_DIR / "maskrcnn" / "maskrcnn_predicted_JSONs"
 
 # For YOLO+DeepLab:
+YOLO_DEEPLAB_RAW_PREDICTED_MASKS_DIR = PREDICTED_RAW_BASE_DIR / "yolo_deeplab"
 YOLO_DEEPLAB_PREDICTED_MASKS_DIR = PREDICTED_BASE_DIR / "yolo_deeplab" / "yolo_deeplab_predicted_masks"
 YOLO_DEEPLAB_PREDICTED_JSONS_DIR = PREDICTED_BASE_DIR / "yolo_deeplab" / "yolo_deeplab_predicted_JSONs"
 
