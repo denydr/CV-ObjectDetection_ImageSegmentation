@@ -512,7 +512,7 @@ from pathlib import Path
 from model_handler import get_model
 from data_loader import load_raw_frames, load_predicted_json, load_raw_predicted_masks
 from label_standardization import load_canonical_mapping
-from config import CANONICAL_MAPPING_PATH, CONFIDENCE_THRESHOLD, MAX_INSTANCES
+from config import CANONICAL_MAPPING_PATH, CONFIDENCE_THRESHOLD_VISUALIZATION, MAX_INSTANCES_VISUALIZATION
 
 def run_video_inference(sequence_name, model, model_name, canonical_mapping, save_path):
     print(f"🎬 Running inference on '{sequence_name}' with model '{model_name}'...")
@@ -538,14 +538,14 @@ def run_video_inference(sequence_name, model, model_name, canonical_mapping, sav
 
         # Apply thresholding on scores
         if scores.size > 0:
-            keep = scores >= CONFIDENCE_THRESHOLD
+            keep = scores >= CONFIDENCE_THRESHOLD_VISUALIZATION
             boxes = boxes[keep]
             labels = labels[keep]
             scores = scores[keep]
 
         # Limit to top MAX_INSTANCES
-        if scores.size > MAX_INSTANCES:
-            top = np.argsort(scores)[-MAX_INSTANCES:][::-1]
+        if scores.size > MAX_INSTANCES_VISUALIZATION:
+            top = np.argsort(scores)[-MAX_INSTANCES_VISUALIZATION:][::-1]
             boxes = boxes[top]
             labels = labels[top]
 
@@ -596,7 +596,7 @@ def main():
 
     models = {
         "yolo": {
-            "sequence": "horsejump-high",
+            "sequence": "bike-packing",
             "model": get_model("yolo"),
             "save_path": "/Users/dd/PycharmProjects/CV-ObjectDetection_ImageSegmentation/results_visualization/videos/yolo_horsejump-high_thresh080_max3.mp4"
         },

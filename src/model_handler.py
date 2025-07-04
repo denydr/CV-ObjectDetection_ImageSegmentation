@@ -180,3 +180,4 @@ if __name__ == "__main__":
     print("🔍 Loading YOLO-DeepLab model for testing...")
     model = get_model("yolo_deeplab")
     print("✅ YOLO_DEEPLAB model loaded and ready.")
+

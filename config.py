@@ -43,9 +43,13 @@ DEEPLAB_PATH = DEEPLAB_DIR / "deeplabv3_resnet101_coco.pth"
 
 # Evaluation Parameters
 IOU_THRESHOLD = 0.5         # IoU threshold for matching predictions to ground truth
-CONFIDENCE_THRESHOLD = 0.8 # Threshold for detection confidence (if applicable) CONFIDENCE_THRESHOLD = 0.8
-MAX_INSTANCES = 3 # MAX_INSTANCES = 5
+CONFIDENCE_THRESHOLD = 0.5 # Threshold for detection confidence (if applicable)
+MAX_INSTANCES = 5 # MAX_INSTANCES
 DEVICE = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES") else "cpu"
+
+## Evaluation Parameters for Visualization of Results Module (results_visuqlization.py)
+CONFIDENCE_THRESHOLD_VISUALIZATION = 0.8 # Threshold for detection confidence (if applicable) CONFIDENCE_THRESHOLD = 0.8
+MAX_INSTANCES_VISUALIZATION = 3
 
 # Other evaluation configuration (you can add more as needed)
 METRICS = {
